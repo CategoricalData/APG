@@ -243,7 +243,7 @@ Proof.
  f_equal. apply pfSurj0.
 Qed.
 
-(* Algebraic Property Graphs  ******************************************)
+(* Types ******************************************)
 
 Section APG.
  Variable B : Type.
@@ -256,15 +256,6 @@ Inductive Ty L :=
  | Times : Ty L -> Ty L -> Ty L
  | Base  : B    -> Ty L
  | Label : L    -> Ty L.
-
-Inductive Term {E L} (lam : E -> L) : Ty L -> Type :=
- | ID  : forall e, Term lam (Label  (lam e))
- | Prim: forall b (c: P b), Term lam (Base _ b)
- | Tt  : Term lam (One _)
- | Pair: forall {t t'}, Term lam t -> Term lam t' -> Term lam (Times t t')
- | Inl : forall {t t'}, Term lam t -> Term lam (Plus  t t')
- | Inr : forall {t t'}, Term lam t'-> Term lam (Plus  t t').
-
 Fixpoint MapTy {L1 L2} (f: L1 -> @Ty L2) (ty: @Ty L1) : @Ty L2 := 
  match ty with
   | Zero  _     => Zero  _
@@ -274,684 +265,6 @@ Fixpoint MapTy {L1 L2} (f: L1 -> @Ty L2) (ty: @Ty L1) : @Ty L2 :=
   | Label l   => f l
   | Base  _ b   => Base  _ b
  end.
-
-Fixpoint MapTerm {E1 L1} {lam1 : E1 -> L1} {E2 L2} {lam2 : E2 -> L2} 
-  (g : L1 -> Ty L2) (h : forall (e:E1), Term lam2 (g (lam1 e))) 
-      {ty} (term: Term lam1 ty) : Term  lam2 (MapTy g ty) :=
-  match term with
- | ID   _ e   =>  h e
- | Prim _ c =>  Prim lam2 c
- | Tt   _     =>  Tt _
- | Pair  x y =>  Pair  (MapTerm g h x) (MapTerm g h y)
- | Inl   x   =>  Inl   (MapTerm g h x)
- | Inr   y   =>  Inr   (MapTerm g h y)
-end.
-
-Definition mapTy {L1 L2} (f: L1 -> L2) (ty: @Ty L1) : @Ty L2
-  := MapTy (fun x => Label (f x)) ty.
-
-Definition mapTerm {E1 L1} {lam1 : E1 -> L1} {E2 L2} {lam2 : E2 -> L2} 
-  (f : L1 -> L2) (g : E1 -> E2) (pfNat : forall e, f (lam1 e) = lam2 (g e))
-      : forall {ty} (x:Term lam1 ty) , Term  lam2 (mapTy f ty).
-refine (fix mapTerm  {ty} term := match term with
- | ID   _ e   =>  _
- | Prim _ c =>  Prim lam2 c
- | Tt   _     =>  Tt _
- | Pair x y =>  Pair  (mapTerm x) (mapTerm y)
- | Inl  x   =>  Inl   (mapTerm x)
- | Inr  y   =>  Inr   (mapTerm y)
-end). simpl. pose (ID lam2 (g e)). rewrite <- (pfNat e) in t. exact t.
-Defined.
-
-Record APG := newAPG {
- L : Type;
- sigma : L -> Ty L;
- E   : Type;
- lam : E -> L;
- phi : forall e, Term lam (sigma (lam e));
-}.
-
-(* Morphisms of APGs **********************************************)
-
-Record APGMorphism (G1 G2: APG) := newAPGMorphism {
-  lMap : L G1 -> L G2 ;
-  eMap : E G1 -> E G2 ;
-  pfNat : forall e, lMap (lam G1 e) = lam G2 (eMap e);
-}.
-
-Lemma APGMorphismEq (G1 G2: APG) (h1 h2 : APGMorphism G1 G2)  : 
-  lMap h1 = lMap h2 -> eMap h1 = eMap h2 -> h1 = h2.
-Proof.
- intros pf1 pf2. destruct h1,h2; simpl in *. subst. f_equal. apply proof_irrelevance.
-Qed.
-
-Definition TransHelper1  G H (j k:APGMorphism G H) e0 : eMap  j e0 =
-              eMap  k e0 ->  lMap  j (lam G e0) =
- lMap  k (lam G e0).
- intros pf. rewrite  (pfNat j e0) . rewrite  (pfNat k e0) .
- rewrite pf. auto.
-Defined.
-
-Definition IdApgMorphism G : APGMorphism G G.
-refine (newAPGMorphism G G (fun l => l) (fun e => e) (fun e => refl_equal _)).
-Defined.
-
-Definition ApgMorphismCompose {G1 G2 G3} (F: APGMorphism G1 G2) (G: APGMorphism G2 G3) : APGMorphism G1 G3.
-refine (newAPGMorphism G1 G3 (fun l => lMap  G (lMap  F l)) (fun e => eMap  G (eMap  F e)) _).
-intros e. destruct F,G. simpl. rewrite pfNat0. rewrite pfNat1. reflexivity.
-Defined.
-
-Definition APGInst : Category. 
-refine (@newCategory APG APGMorphism IdApgMorphism (@ApgMorphismCompose) _ _ _).
-intros. unfold IdApgMorphism,ApgMorphismCompose. destruct f. simpl. f_equal. apply proof_irrelevance.
-intros. unfold IdApgMorphism,ApgMorphismCompose. destruct f. simpl. f_equal. apply proof_irrelevance.
-intros. unfold IdApgMorphism,ApgMorphismCompose. destruct f,g,h. simpl in *. f_equal. apply proof_irrelevance.
-Defined.
-
-Lemma lemma1 {X Y}
-(f g : Hom Y X)
-(Q0 : ob APGInst)
-(q0 : Hom Q0 Y)
-(pf : comp q0 f = comp q0 g)
-(l : L Q0)
-(pfNq : lMap  f (lMap  q0 l) <>
-       lMap  g (lMap  q0 l)) : False.
-Proof.
- destruct f,g; simpl in *. unfold ApgMorphismCompose in *. simpl in *.
- inversion pf. pose (FnHelper l H0). contradiction.
-Qed.
-
-Lemma lemma2 {X Y}
-(f g : Hom Y X)
-(Q0 : ob APGInst)
-(q0 : Hom Q0 Y)
-(pf : comp q0 f = comp q0 g)
-(e : E Q0)
-(pfNq : eMap  f (eMap  q0 e) <>
-       eMap  g (eMap  q0 e)) : False.
-Proof.
- destruct f,g; simpl in *. unfold ApgMorphismCompose in *. simpl in *.
- inversion pf. pose (FnHelper e H1). contradiction.
-Qed.
-
-(* Constructions on APGs ******************************************)
-
-Definition InitialAPG : APG := @newAPG Empty_set (fun x => match x with end) 
-  Empty_set (fun x => match x with end) (fun x => match x with end).
-Definition InitialAPGMorphism (G: APG) : APGMorphism InitialAPG G.
-refine (newAPGMorphism InitialAPG G 
-  (fun x => match x with end) (fun x => match x with end) _).
-intros. elim e.
-Defined.
-
-Theorem APGInstInitial : @initial APGInst InitialAPG.
-Proof.
-  intros a. exists (InitialAPGMorphism a). 
-  split; auto. intros. apply APGMorphismEq. 
-  apply functional_extensionality_dep. intros x; elim x.
-  apply functional_extensionality_dep. intros x; elim x.
-Qed.
- 
-Definition TerminalAPG : APG := @newAPG unit (fun x => One _) 
-  unit (fun x => tt) (fun x => Tt _).
-Definition TerminalAPGMorphism (G: APG) : APGMorphism G TerminalAPG.
-refine (newAPGMorphism G TerminalAPG (fun x => tt) (fun x => tt) _).
-intros. auto.
-Defined.
-
-Theorem APGInstTerminal : @terminal APGInst TerminalAPG.
-Proof.
-  intros a. exists (TerminalAPGMorphism a). 
-  split; auto. intros h. intros pf; clear pf. apply APGMorphismEq. 
-  apply functional_extensionality_dep. intros l.
-  unfold TerminalAPG,TerminalAPGMorphism;simpl.
-  match goal with [ _ : _ |- tt = ?x ] => destruct x end. auto.
-  unfold TerminalAPG,TerminalAPGMorphism;simpl.
-  apply functional_extensionality_dep. intros e. 
-  match goal with [ _ : _ |- tt = ?x ] => destruct x end. auto.
-Qed.
-
-Definition CoProductAPG (G1 G2 : APG) : APG.
-refine (@newAPG 
-  (L G1 + L G2)
-  (fun l => match l with 
-   | inl a => mapTy inl (sigma G1 a)
-   | inr b => mapTy inr (sigma G2 b)
-   end)
-  (E G1 + E G2) 
-  (fun l => match l with 
-   | inl a => inl (lam G1 a)
-   | inr b => inr (lam G2 b)
-   end)
-  (fun e => match e with 
-   | inl a => mapTerm inl inl _ (phi G1 a)
-   | inr b => mapTerm inr inr _ (phi G2 b)
-   end)); auto. 
-Defined.
-
-Definition InlAPGMorphism (G1 G2: APG) 
-  : APGMorphism G1 (CoProductAPG G1 G2).
-refine (newAPGMorphism G1 (CoProductAPG G1 G2) (inl) (inl) _).
-intros. auto.
-Defined.
-
-Definition InrAPGMorphism (G1 G2: APG) 
-  : APGMorphism G2 (CoProductAPG G1 G2).
-refine (newAPGMorphism G2 (CoProductAPG G1 G2) (inr) (inr) _).
-intros. auto.
-Defined.
-
-Definition APGCoproduct (X1 X2:  APG)
-  Y (f1 : APGMorphism X1 Y) (f2 : APGMorphism X2 Y)
-: APGMorphism (CoProductAPG X1 X2) Y. 
-refine (newAPGMorphism (CoProductAPG X1 X2) Y  (fun l => match l with 
-   | inl a =>  lMap  f1 a
-   | inr b =>  lMap  f2 b
-   end) (fun e => match e with 
-   | inl a =>  eMap  f1 a
-   | inr b =>  eMap  f2 b
-   end) _). intros. destruct e; simpl. destruct f1. auto. destruct f2. auto.
-Defined.
-
-Theorem APGHasCoProducts {X1 X2} : @coproduct APGInst X1 X2 (CoProductAPG X1 X2) (InlAPGMorphism X1 X2) (InrAPGMorphism X1 X2).
- intros X. intros. exists (@APGCoproduct X1 X2 X f1 f2).
- split. split. 
- apply APGMorphismEq. auto. auto.
- apply APGMorphismEq. auto. auto.
- intros f pf. destruct pf as [pf1 pf2]. 
- subst. simpl. destruct f,X1,X2,X; compute in *.
- apply APGMorphismEq. simpl in *.  apply functional_extensionality_dep.  intros x; destruct x; auto.
- simpl in *.  apply functional_extensionality_dep.  intros x; destruct x; auto.
-Qed.
-
-Definition ProductAPG (G1 G2 : APG) : APG.
-refine (@newAPG 
-  (L G1 * L G2)
-  (fun l => match l with 
-   | (a, b) => Times (mapTy (fun x => (x, b)) (sigma G1 a))
-                       (mapTy (fun x => (a, x)) (sigma G2 b))
-   end)
-  (E G1 * E G2) 
-  (fun l => match l with 
-   | (a, b) => (lam G1 a, lam G2 b)
-   end)
-  (fun e => match e with 
-   | (a, b) => Pair  
-                (mapTerm _ (fun x => (x, b)) _ (phi G1 a))
-                (mapTerm _ (fun x => (a, x)) _ (phi G2 b))
-   end)); auto.
-Defined.
-
-Definition FstAPGMorphism (G1 G2: APG) 
-  : APGMorphism (ProductAPG G1 G2) G1.
-refine (newAPGMorphism (ProductAPG G1 G2) G1 fst fst _).
-intros. destruct e. compute. auto.
-Defined.
-
-Definition SndAPGMorphism (G1 G2: APG) 
-  : APGMorphism (ProductAPG G1 G2) G2.
-refine (newAPGMorphism (ProductAPG G1 G2) G2 snd snd _).
-intros. destruct e. compute. auto.
-Defined.
-
-Definition APGProduct (X1 X2:  APG)
-  Y (f1 : APGMorphism Y X1) (f2 : APGMorphism Y X2)
-: APGMorphism Y (ProductAPG X1 X2). 
-refine (newAPGMorphism Y (ProductAPG X1 X2) 
- (fun l => (lMap  f1 l, lMap  f2 l)) 
- (fun e => (eMap  f1 e, eMap  f2 e))
- _). intros. simpl. f_equal. destruct f1.  simpl. auto.
- destruct f2. simpl. auto.
-Defined.
-
-Theorem APGHasProducts {X1 X2} : @product APGInst X1 X2 (ProductAPG X1 X2) (FstAPGMorphism X1 X2) (SndAPGMorphism X1 X2).
-Proof.
- intros X. intros. exists (@APGProduct X1 X2 X f1 f2).
- split. split. 
- apply APGMorphismEq. auto. auto.
- apply APGMorphismEq. auto. auto.
- intros f pf. destruct pf as [pf1 pf2]. 
- subst. simpl. destruct f,X1,X2,X; compute in *.
- apply APGMorphismEq. simpl in *.  apply functional_extensionality_dep.
- intros x. destruct (lMap0 x). auto.
- simpl in *. apply functional_extensionality_dep. intros x.
- destruct (eMap0 x); auto.
-Qed.
-
-Definition EqualizerAPG {G H : APG} (j k : APGMorphism G H) : APG.
-refine (@newAPG 
-  { l : L G | lMap  j l = lMap  k l }
-  (fun l => match l with 
-   | exist _ l0 pf => MapTy (fun l1 => 
-    match EqDecAx (lMap  j l1) (lMap k l1) with
-     | left  pfEq => Plus (One _) (Label (exist _ l1 pfEq))
-     | right pfEq => One _
-    end) (sigma G l0)   
-  end)
-  { e : E G | eMap j e = eMap k e }
-  (fun e => match e with 
-   | exist _ e0 pf => exist _ (lam G e0) (TransHelper1 j k e0 pf)
-  end)
-  (fun e => match e with 
-   | exist _ e0 pf => MapTerm (fun l1 => 
-    match EqDecAx (lMap  j l1) (lMap  k l1) with
-     | left  pfEq => Plus (One _) (Label (exist _ l1 pfEq))
-     | right pfEq => One _
-    end)
-    (fun e1 => match EqDecAx (eMap  j e1) (eMap  k e1) with
-     | left  pfEq => _
-     | right pfEq => _ end ) (phi G e0) 
-  end)
-).
-pose (TransHelper1 j k e1 pfEq). 
-   pose (ID (fun
-     e2 : {e2 : E G |
-          eMap j e2 = eMap k e2}
-   =>
-   let (e3, pf0) := e2 in
-   exist
-     (fun l : L G =>
-      lMap j l = lMap k l)
-     (lam G e3)
-     (TransHelper1 j k e3 pf0)) (exist _ e1 pfEq)).
-destruct ( EqDecAx (lMap  j (lam G e1))
-      (lMap  k (lam G e1)) ).
-assert ((TransHelper1 j k e1 pfEq) = e3). apply proof_irrelevance. rewrite <- H0. exact (Inr  t).
-contradiction. 
-destruct ( EqDecAx (lMap  j (lam G e1))
-      (lMap  k (lam G e1)) ). apply Inl. apply Tt. apply Tt.
-Defined.
-
-Definition EqualizerAPGMorphism {G H : APG} (j k : APGMorphism G H) 
- : APGMorphism (EqualizerAPG j k) G.
-refine (newAPGMorphism (EqualizerAPG j k) G 
- (fun l => proj1_sig l) (fun e => proj1_sig e) _).
-intros. destruct e. simpl in *. auto.
-Defined.
-
-Definition ApgEqualizerHelper {X Y}  (f g : Hom Y X) 
- (Q0 : ob APGInst) (q0 : Hom Q0 Y) (pf : comp q0 f = comp q0 g)
- : Hom Q0 (EqualizerAPG f g).
-refine (newAPGMorphism Q0 (EqualizerAPG f g)
-  (fun l => match EqDecAx (lMap  f (lMap  q0 l)) (lMap g (lMap  q0 l)) with
-    | left  pfEq => exist _ (lMap  q0 l) pfEq
-    | right pfNq => match lemma1    pf l pfNq with end
-   end) (fun e => match EqDecAx (eMap  f (eMap  q0 e)) (eMap g (eMap  q0 e)) with
-    | left  pfEq => exist _ (eMap  q0 e) pfEq
-    | right pfNq => match lemma2 pf e pfNq with end
-   end) _).
- intros. destruct f,g; simpl in *.
- unfold ApgMorphismCompose in *. simpl in *.
- inversion pf. simpl in *.
- destruct X,Y,q0,Q0; compute in *.
- pose (FnHelper e H1). pose (FnHelper (lam2 e) H0).
- simpl in *. destruct ( EqDecAx (lMap0 (lMap2 (lam2 e)))
-    (lMap1 (lMap2 (lam2 e))) ). simpl in *.
- apply ExPfIrr. simpl. destruct (EqDecAx (eMap0 (eMap2 e))
-         (eMap1 (eMap2 e))). simpl.  auto. 
- simpl. contradiction. simpl. contradiction.
-Defined.
-
-Theorem APGHasEqualizers {X Y} f g : @equalizer APGInst X Y f g 
- (EqualizerAPG f g) (EqualizerAPGMorphism f g).
-Proof.
- split. simpl. unfold EqualizerAPGMorphism,ApgMorphismCompose. 
-  apply APGMorphismEq. simpl. apply functional_extensionality.
-  intros l0; destruct l0; simpl in *; auto.
-  simpl. apply functional_extensionality.
-  intros l0; destruct l0; simpl in *; auto.
-  intros Q0 q0 pf. exists (ApgEqualizerHelper   pf).
-  destruct f,g. unfold ApgMorphismCompose in *.
-  unfold comp in *. unfold Comp in *. simpl in *. inversion pf. split. 
-  apply APGMorphismEq. simpl. apply functional_extensionality.
-  intros l. pose (FnHelper l H0).
- simpl in *. destruct (  EqDecAx (lMap0 (lMap  q0 l))
-      (lMap1 (lMap q0 l)) ). simpl in *. auto.
- contradiction. simpl in *. 
- apply functional_extensionality. 
- intros e. pose (FnHelper e H1). destruct (  EqDecAx (eMap0 (eMap  q0 e))
-      (eMap1 (eMap  q0 e)) ). simpl in *. auto.
- simpl in *. contradiction. 
- intros u pf2. apply APGMorphismEq. simpl. apply functional_extensionality.
-  intros l. pose (FnHelper l H0).
- simpl in *. destruct (  EqDecAx (lMap0 (lMap  q0 l))
-      (lMap1 (lMap  q0 l)) ). apply ExPfIrr. simpl.
- subst. simpl in *. auto. contradiction.
- simpl in *. apply functional_extensionality. 
- intros e. pose (FnHelper e H1). destruct (  EqDecAx (eMap0 (eMap  q0 e))
-      (eMap1 (eMap  q0 e)) ). simpl in *. apply ExPfIrr. simpl in *.
- subst. simpl in *. auto. contradiction.
-Qed.
-
-(*******************************************************************)
-(* For co-equalizers, we specialize the definitions.               *)
-
-Section coeq.
-
-Variable sL : Type.
-Variable ssigma : sL -> Ty sL.
-
-Record sAPG := newsAPG {
- sE   : Type;
- slam : sE -> sL;
- sphi : forall e, Term slam (ssigma (slam e));
-}.
-
-Record sAPGMorphism (G1 G2: sAPG) := newsAPGMorphism {
-  seMap : sE G1 -> sE G2 ;
-  spfNat : forall e,  (slam G1 e) = slam G2 (seMap e)
-}.
-
-Lemma sAPGMorphismEq (G1 G2: sAPG) (h1 h2 : sAPGMorphism G1 G2)  : 
-  seMap h1 = seMap h2 -> h1 = h2.
-Proof.
- intros pf1. destruct h1,h2; simpl in *. subst. f_equal. apply proof_irrelevance.
-Qed.
-
-Definition IdsApgMorphism G : sAPGMorphism G G.
-refine (newsAPGMorphism G G (fun e => e) (fun e => refl_equal _)).
-Defined.
-
-Definition sApgMorphismCompose {G1 G2 G3} (F: sAPGMorphism G1 G2) (G: sAPGMorphism G2 G3) : sAPGMorphism G1 G3.
-refine (newsAPGMorphism G1 G3 (fun e => seMap  G (seMap  F e)) _).
-intros e. destruct F,G. simpl. rewrite spfNat0. rewrite spfNat1. reflexivity.
-Defined.
-
-Definition sAPGInst : Category. 
-refine (@newCategory sAPG sAPGMorphism IdsApgMorphism (@sApgMorphismCompose) _ _ _).
-intros. unfold IdsApgMorphism,sApgMorphismCompose. destruct f. simpl. f_equal. apply proof_irrelevance.
-intros. unfold IdsApgMorphism,sApgMorphismCompose. destruct f. simpl. f_equal. apply proof_irrelevance.
-intros. unfold IdsApgMorphism,sApgMorphismCompose. destruct f,g,h. simpl in *. f_equal. apply proof_irrelevance.
-Defined.
-
-Definition mapTermAlt {E1} {lam1 : E1 -> sL} {E2}   
-   (g : E1 -> E2) : forall
-       {ty} (x:Term lam1 ty) (lam2 : E2 -> sL) 
-  (pfNat : forall e,  (lam1 e) = lam2 (g e)) , Term lam2 ty.
-refine (fix mapTermAlt  {ty} term lam2 pf := match term with
- | ID   _ e   =>  _
- | Prim _ c =>  Prim  _ c
- | Tt   _     =>  Tt _
- | Pair x y =>  Pair  (mapTermAlt x lam2 pf) (mapTermAlt y lam2 pf)
- | Inl  x   =>  Inl   (mapTermAlt x lam2 pf)
- | Inr  y   =>  Inr   (mapTermAlt y lam2 pf)
-end). simpl. pose (ID lam2 (g e)). rewrite <- (pf e) in t. exact t.
-Defined.
-
-Definition CoEqualizersAPG {G1 G2} (j k : sAPGMorphism G1 G2) 
-(pf: forall x y, Lift (seMap  j) (seMap  k) x y -> slam G2 x = slam G2 y) : sAPG.
-
-refine (@newsAPG (quotient (seMap  j) (seMap  k)) 
- (fun e => slam G2 (Repr _ _ e)) (fun e => _ (sphi G2 (Repr _ _ e)))).
-intros a.
-apply (@mapTermAlt (sE G2) (slam G2) (quotient (seMap  j) (seMap k)) (fun x => Eqc _ _ x) (ssigma (slam G2 (Repr _ _ e))) a (fun e => slam G2 (Repr _ _ e))).
-intros x. apply pf. unfold Repr,Eqc,quotient in *.
- destruct ( (axiomQ 
-           )). simpl in *.  apply pfResp4. auto.
-Defined.
-
-Definition CoEqualizersAPGMorphism {G1 G2} (j k : sAPGMorphism G1 G2) 
-(pf: forall x y, Lift (seMap j) (seMap  k) x y -> slam G2 x = slam G2 y) 
-: sAPGMorphism G2 (CoEqualizersAPG j k pf).
-destruct j,k,G2. refine (newsAPGMorphism _ (CoEqualizersAPG
-     {|
-     seMap := seMap0;
-     spfNat := spfNat0 |}
-     {|
-     seMap := seMap1;
-     spfNat := spfNat1 |} pf) (fun e => Eqc _ _ e) _).
- compute in *.
-destruct ( (axiomQ )). simpl in *.
-intros e. apply pf. auto.
-Defined.
-
-Definition ApgCoEqualizerHelper 
-  {G1 G2}
-  (j k : sAPGMorphism G1 G2)
-  (pf : forall x y : sE G2,
-      Lift (seMap  j)
-        (seMap  k) x y ->
-      slam G2 x = slam G2 y)
-  {Q0}
-  (q0 : sAPGMorphism G2 Q0)
-  (H : sApgMorphismCompose j q0 =
-    sApgMorphismCompose k q0)
- : hom sAPGInst (CoEqualizersAPG j k pf) Q0.
-refine (newsAPGMorphism (CoEqualizersAPG j k pf) Q0 (fun e => seMap  q0 (Repr _ _ e)) _).
- destruct j,k,q0,Q0. compute in *. destruct ( (axiomQ  )). 
-  intros q.  apply spfNat2.
-Defined.
-
-Theorem APGHasCoEqualizers {G1 G2} 
-(j k : sAPGMorphism G1  G2)
- (pf3: forall x y, Lift (seMap j) (seMap  k) x y -> slam G2 x = slam G2 y)
-: @coequalizer sAPGInst _ _ j k
- (CoEqualizersAPG j k pf3) (CoEqualizersAPGMorphism j k pf3).
-Proof.
-  split.  
-  apply sAPGMorphismEq. apply functional_extensionality. intros e.
-  destruct j,k,G1,G2. compute in *. 
-  destruct ( (axiomQ )). 
-  apply pfResp3. apply LiftInj.
-
-  simpl in *. intros. exists (@ApgCoEqualizerHelper G1 G2  j k pf3 Q0 q0 H). split.
-  destruct j,k,q0,Q0,G1,G2. compute in *.
-  destruct ( (axiomQ )).  
-  compute in *. apply sAPGMorphismEq. simpl in *.
-  inversion H; clear H. apply functional_extensionality_dep. intros e.
-  induction (pfResp4 e (repr0 (eqc0 e))). auto. auto. congruence. symmetry. apply (FnHelper s H1). auto.
-
-  intros u pf. destruct j,k,q0,Q0,G1,G2,u. compute in *.
-  destruct ( (axiomQ )).  
-  inversion H; clear H. 
-  inversion pf; clear pf. subst.
-  apply sAPGMorphismEq. simpl in *.
-  apply functional_extensionality_dep. intros q.
-  rewrite (pfSurj0 q). auto.
-Qed.
-
-End coeq.
-
-(* The Commutative Square Category ********************************* *)
-
-Inductive  CD_O : Type := EE | TT | LL | VV.
-Inductive  CD_A : CD_O -> CD_O -> Type := | EEEE : CD_A EE EE | EEVV : CD_A EE VV | TTTT : CD_A TT TT | LLLL : CD_A LL LL | VVVV : CD_A VV VV | EELL : CD_A EE LL | LLTT : CD_A LL TT | VVTT : CD_A VV TT | EETT : CD_A EE TT.
-Definition CD_id x: CD_A x x := match x as x return CD_A x x with | EE => EEEE | TT => TTTT | LL => LLLL | VV => VVVV end.
- 
-Definition CD_o1 x : forall z y (f: CD_A x y) (g: CD_A y z), CD_A x z.
-refine (match x as x return forall z y (f: CD_A x y) (g: CD_A y z), CD_A x z with
-  | EE => fun z => match z as z return forall y (f: CD_A EE y) (g: CD_A y z), CD_A EE z with | EE => fun y f g => EEEE | TT => fun y f g => EETT | LL => fun y f g => EELL | VV => fun y f g => EEVV end
-  | TT => fun z => match z as z return forall y (f: CD_A TT y) (g: CD_A y z), CD_A TT z with | EE => fun y f g => _ | TT => fun y f g => TTTT | LL => fun y f g => _ | VV => fun y f g => _ end
-  | LL => fun z => match z as z return forall y (f: CD_A LL y) (g: CD_A y z), CD_A LL z with | EE => fun y f g => _ | TT => fun y f g => LLTT | LL => fun y f g => LLLL | VV => fun y f g => _ end
-  | VV => fun z => match z as z return forall y (f: CD_A VV y) (g: CD_A y z), CD_A VV z with | EE => fun y f g => _ | TT => fun y f g => VVTT | LL => fun y f g => _ | VV => fun y f g => VVVV end
- end); destruct y; inversion f; try auto; inversion g; try auto.
-Defined.
-
-Definition CD_o x y z (f: CD_A x y) (g: CD_A y z) : CD_A x z := CD_o1  f g.
-
-Definition CDCat : Category. refine (@newCategory CD_O CD_A CD_id CD_o _ _ _); intros.
- destruct f; auto.
- destruct f; auto.
- inversion f; inversion g; inversion h;
- subst; try auto; try discriminate.
-Defined.
-
-Lemma lEEEE (g : CD_A EE EE) : g = EEEE. Proof. refine (match g with | EEEE => _ | EEVV => _ | TTTT => _ | LLLL => _ | VVVV => _ | EELL => _ | LLTT => _ | VVTT => _ | EETT => _ end); compute; auto. Qed.
-Lemma lLLLL (g : CD_A LL LL) : g = LLLL. Proof. refine (match g with | EEEE => _ | EEVV => _ | TTTT => _ | LLLL => _ | VVVV => _ | EELL => _ | LLTT => _ | VVTT => _ | EETT => _ end); compute; auto. Qed.
-Lemma lTTTT (g : CD_A TT TT) : g = TTTT. Proof. refine (match g with | EEEE => _ | EEVV => _ | TTTT => _ | LLLL => _ | VVVV => _ | EELL => _ | LLTT => _ | VVTT => _ | EETT => _ end); compute; auto. Qed.
-Lemma lVVVV (g : CD_A VV VV) : g = VVVV. Proof. refine (match g with | EEEE => _ | EEVV => _ | TTTT => _ | LLLL => _ | VVVV => _ | EELL => _ | LLTT => _ | VVTT => _ | EETT => _ end); compute; auto. Qed.
-Lemma lEELL (g : CD_A EE LL) : g = EELL. Proof. refine (match g with | EEEE => _ | EEVV => _ | TTTT => _ | LLLL => _ | VVVV => _ | EELL => _ | LLTT => _ | VVTT => _ | EETT => _ end); compute; auto. Qed.
-Lemma lEETT (g : CD_A EE TT) : g = EETT. Proof. refine (match g with | EEEE => _ | EEVV => _ | TTTT => _ | LLLL => _ | VVVV => _ | EELL => _ | LLTT => _ | VVTT => _ | EETT => _ end); compute; auto. Qed.
-Lemma lVVTT (g : CD_A VV TT) : g = VVTT. Proof. refine (match g with | EEEE => _ | EEVV => _ | TTTT => _ | LLLL => _ | VVVV => _ | EELL => _ | LLTT => _ | VVTT => _ | EETT => _ end); compute; auto. Qed.
-Lemma lLLTT (g : CD_A LL TT) : g = LLTT. Proof. refine (match g with | EEEE => _ | EEVV => _ | TTTT => _ | LLLL => _ | VVVV => _ | EELL => _ | LLTT => _ | VVTT => _ | EETT => _ end); compute; auto. Qed.
-Lemma lEEVV (g : CD_A EE VV) : g = EEVV. Proof. refine (match g with | EEEE => _ | EEVV => _ | TTTT => _ | LLLL => _ | VVVV => _ | EELL => _ | LLTT => _ | VVTT => _ | EETT => _ end); compute; auto. Qed.
-Lemma lVVEE (g : CD_A VV EE) : False. Proof. refine (match g with | EEEE => _ | EEVV => _ | TTTT => _ | LLLL => _ | VVVV => _ | EELL => _ | LLTT => _ | VVTT => _ | EETT => _ end); compute; auto. Qed.
-Lemma lVVLL (g : CD_A VV LL) : False. Proof. refine (match g with | EEEE => _ | EEVV => _ | TTTT => _ | LLLL => _ | VVVV => _ | EELL => _ | LLTT => _ | VVTT => _ | EETT => _ end); compute; auto. Qed.
-Lemma lTTEE (g : CD_A TT EE) : False. Proof. refine (match g with | EEEE => _ | EEVV => _ | TTTT => _ | LLLL => _ | VVVV => _ | EELL => _ | LLTT => _ | VVTT => _ | EETT => _ end); compute; auto. Qed. 
-Lemma lTTLL (g : CD_A TT LL) : False. Proof. refine (match g with | EEEE => _ | EEVV => _ | TTTT => _ | LLLL => _ | VVVV => _ | EELL => _ | LLTT => _ | VVTT => _ | EETT => _ end); compute; auto. Qed.
-Lemma lLLEE (g : CD_A LL EE) : False. Proof. refine (match g with | EEEE => _ | EEVV => _ | TTTT => _ | LLLL => _ | VVVV => _ | EELL => _ | LLTT => _ | VVTT => _ | EETT => _ end); compute; auto. Qed.
-Lemma lTTVV (g : CD_A TT VV) : False. Proof. refine (match g with | EEEE => _ | EEVV => _ | TTTT => _ | LLLL => _ | VVVV => _ | EELL => _ | LLTT => _ | VVTT => _ | EETT => _ end); compute; auto. Qed.
-Lemma lLLVV (g : CD_A LL VV) : False. Proof. refine (match g with | EEEE => _ | EEVV => _ | TTTT => _ | LLLL => _ | VVVV => _ | EELL => _ | LLTT => _ | VVTT => _ | EETT => _ end); compute; auto. Qed.
-
-(* APG Morphisms as Natural Transformations *************************)
-
-Definition APGtoFunctor (G:APG) : Functor CDCat SET. refine (
- newFunctor CDCat SET 
- (fun x => match x with
-  | EE => E G
-  | TT => Ty (L G)
-  | LL => L G
-  | VV => sigT (Term (lam G))
- end ) 
- (fun z y f => match f with
-  | EEEE => fun x => x
-  | TTTT => fun x => x
-  | LLLL => fun x => x
-  | VVVV => fun x => x
-  | EEVV => fun x => existT _ _ (phi G x)
-  | EELL => fun x => lam G x
-  | LLTT => fun x => sigma G x
-  | VVTT => fun x => projT1 x
-  | EETT => fun x => sigma G (lam G x)
-end) _ _).
- intros.  destruct x; auto. 
- intros.  destruct x,y,z;simpl;
- try (rewrite ( lEEEE g)); try (rewrite ( lLLLL g)); try (rewrite ( lTTTT g)); try (rewrite ( lVVVV g)); try (rewrite ( lEELL g)); try (rewrite ( lEETT g)); try (rewrite ( lVVTT g)); try (rewrite ( lLLTT g)); try (rewrite ( lEEVV g)); try (rewrite ( lVVEE g)); try (rewrite ( lVVLL g)); try (rewrite ( lTTEE g)); try (rewrite ( lTTLL g)); try (rewrite ( lLLEE g)); try (rewrite ( lTTVV g)); try (rewrite ( lLLVV g)); try (rewrite ( lEEEE f)); try (rewrite ( lLLLL f)); try (rewrite ( lTTTT f)); try (rewrite ( lVVVV f)); try (rewrite ( lEELL f)); try (rewrite ( lEETT f)); try (rewrite ( lVVTT f)); try (rewrite ( lLLTT f)); try (rewrite ( lEEVV f)); try (rewrite ( lVVEE f)); try (rewrite ( lVVLL f)); try (rewrite ( lTTEE f)); try (rewrite ( lTTLL f)); try (rewrite ( lLLEE f)); try (rewrite ( lTTVV f)); try (rewrite ( lLLVV f)) ; auto; 
- try (elim ( lEEEE g)); try (elim ( lLLLL g)); try (elim ( lTTTT g)); try (elim ( lVVVV g)); try (elim ( lEELL g)); try (elim ( lEETT g)); try (elim ( lVVTT g)); try (elim ( lLLTT g)); try (elim ( lEEVV g)); try (elim ( lVVEE g)); try (elim ( lVVLL g)); try (elim ( lTTEE g)); try (elim ( lTTLL g)); try (elim ( lLLEE g)); try (elim ( lTTVV g)); try (elim ( lLLVV g)); try (elim ( lEEEE f)); try (elim ( lLLLL f)); try (elim ( lTTTT f)); try (elim ( lVVVV f)); try (elim ( lEELL f)); try (elim ( lEETT f)); try (elim ( lVVTT f)); try (elim ( lLLTT f)); try (elim ( lEEVV f)); try (elim ( lVVEE f)); try (elim ( lVVLL f)); try (elim ( lTTEE f)); try (elim ( lTTLL f)); try (elim ( lLLEE f)); try (elim ( lTTVV f)); try (elim ( lLLVV f)).
-Defined.
-
-Definition APGInstBig : Category.
-refine (
-  @newCategory APG 
- (fun x y => Transform (APGtoFunctor x) (APGtoFunctor y) ) 
- (fun x => IdTrans (APGtoFunctor x) )
- (fun x y z f g => CompTrans f g ) _ _ _ ).
- intros; try apply TransPfIrr; try apply PI; simpl in *;
-  apply functional_extensionality_dep ; intros;
- apply functional_extensionality_dep; intros; auto.
- intros; try apply TransPfIrr; try apply PI; simpl in *;
-  apply functional_extensionality_dep ; intros;
- apply functional_extensionality_dep; intros; auto.
- intros; try apply TransPfIrr; try apply PI; simpl in *;
-  apply functional_extensionality_dep ; intros;
- apply functional_extensionality_dep; intros; auto.
-Defined.
-
-(* Natural Transformations *************************************************)
-
-Lemma ExistTHelper2 {A T} a t a0 t0 : 
- a = a0 -> (a = a0 -> JMeq t t0) -> @existT A T a t = @existT A T a0 t0.
-Proof.
- intros pf. subst. intros pf. f_equal. pose (pf (refl_equal _)). 
- clearbody j. clear pf. auto. apply JMeq_eq. auto.
-Qed.
-
-Lemma TyInvOne {L E} {lam1 : E -> L} 
- (x : Term lam1 (One L)) : x = (Tt lam1).
-Proof.
- refine (match x as x0 in Term _ z return z = One L -> JMeq x x0 -> x = Tt lam1 with
-  | ID   _ e   =>  fun pf pf2 => _
-  | Prim _ c =>  fun pf pf2 => _
-  | Tt   _     =>  fun pf pf2 => _
-  | Pair x y =>  fun pf pf2 => _
-  | Inl  x   =>  fun pf pf2 => _
-  | Inr  y   =>  fun pf pf2 => _
- end ( refl_equal _ ) (JMeq_refl _)); try discriminate; try auto.
- apply JMeq_eq. auto.
-Qed.
-
-Lemma TyInvZero {L E} {lam1 : E -> L} 
- (x : Term lam1 (Zero L)) : False.
-Proof.
- refine (match x as x0 in Term _ z return z = Zero L -> JMeq x x0 -> False with
-  | ID   _ e   =>  fun pf pf2 => _
-  | Prim _ c =>  fun pf pf2 => _
-  | Tt   _     =>  fun pf pf2 => _
-  | Pair x y =>  fun pf pf2 => _
-  | Inl   x   =>  fun pf pf2 => _
-  | Inr   y   =>  fun pf pf2 => _
- end ( refl_equal _ ) (JMeq_refl _)); try discriminate; try auto.
-Qed.
-
-Lemma TyInvPair {L E} {lam1 : E -> L} {t1 t2} 
- (x : Term lam1 (Times t1 t2)) : exists a, exists b, 
-    x = Pair a b.
-Proof.
- refine (match x as x0 in Term _ z return z = Times  t1 t2 -> JMeq x x0 -> exists a, exists b, 
-    x = Pair  a b with
-  | ID   _ e   =>  fun pf pf2 => _
-  | Prim _ c =>  fun pf pf2 => _
-  | Tt   _     =>  fun pf pf2 => _
-  | Pair  x y =>  fun pf pf2 => _
-  | Inl   x   =>  fun pf pf2 => _
-  | Inr   y   =>  fun pf pf2 => _
- end ( refl_equal _ ) (JMeq_refl _)); try discriminate; try auto.
-assert (t0 = t2). injection pf. intros pf1. subst. auto.
-subst. assert (t = t1). injection pf. auto. subst. clear pf.
-exists x.  exists y. apply JMeq_eq. auto.
-Qed.
-
-Lemma TyInvPlus {L E} {lam1 : E -> L} {t1 t2} 
- (x : Term lam1 (Plus  t1 t2)) : (exists a, x = Inl  a ) \/ (exists b, x = Inr b).
-Proof.
- refine (match x as x0 in Term _ z return z = Plus  t1 t2 -> JMeq x x0 -> 
-    (exists a, x = Inl  a ) \/ (exists b, x = Inr  b) with
-  | ID   _ e   =>  fun pf pf2 => _
-  | Prim _  c =>  fun pf pf2 => _
-  | Tt   _     =>  fun pf pf2 => _
-  | Pair  x y =>  fun pf pf2 => _
-  | Inl   x   =>  fun pf pf2 => _
-  | Inr   y   =>  fun pf pf2 => _
- end ( refl_equal _ ) (JMeq_refl _)); try discriminate; try auto.
-assert (t0 = t2). injection pf. intros pf1. subst. auto.
-subst. assert (t = t1). injection pf. auto. subst. clear pf.
-left. exists x. apply JMeq_eq. auto. right. assert (t0 = t2). injection pf. intros pf1. subst. auto.
-subst. assert (t = t1). injection pf. auto. subst. clear pf.
-exists y. apply JMeq_eq. auto. 
-Qed.
-
-Definition APGMorphismToTransform {G1 G2:APG} (h: APGMorphism G1 G2) 
-  (pfNatL : forall l, sigma G2 (lMap  h l) = mapTy (lMap  h) (sigma G1 l)) 
-  (pfNatE : forall e, mapTerm (lMap h) (eMap h) (pfNat h) (phi G1 e) = 
-   match pfNatL (lam G1 e) in _ = y return Term (lam G2)
-    y with
-    | refl_equal => match symmetry (pfNat  h e) in _ = z 
-       return Term (lam G2) (sigma G2 z) with
-        | refl_equal => phi G2 (eMap  h e)
-      end 
-   end) : Transform (APGtoFunctor G1) (APGtoFunctor G2). 
-refine (@newTransform CDCat SET (APGtoFunctor G1) (APGtoFunctor G2) 
- (fun x => match x with
-  | EE => eMap  h
-  | TT => mapTy (lMap h)
-  | LL => lMap  h
-  | VV => fun v => existT _ (mapTy (lMap  h) (projT1 v)) (mapTerm (lMap  h) (eMap  h) (pfNat h) (projT2 v) ) 
- end) _).
-intros; 
-  destruct G1,G2,h,f; simpl in *; auto.
-Focus 2. apply functional_extensionality_dep. auto.
-Focus 2. apply functional_extensionality_dep. intros w. rewrite (pfNatL w). auto.
-Focus 2. apply functional_extensionality_dep. intros w. rewrite <- (pfNat0 w). auto.
-apply functional_extensionality_dep. intros w. 
-  rewrite  (pfNatE w). clear pfNatE. rewrite <- (pfNatL (lam0 w)).
-  rewrite  (pfNat0 w). f_equal.
-Qed.
-
-Definition Gx1 : APG := @newAPG unit (fun x => Zero _) 
-Empty_set (fun x => match x with end) (fun x => match x with end).
-Definition Gx2 : APG := @newAPG unit (fun x => One _) 
-Empty_set (fun x => match x with end) (fun x => match x with end).
-Definition hx : APGMorphism Gx1 Gx2.
-refine (newAPGMorphism Gx1 Gx2 (fun l => l) (fun e => match e with end) _).
-intros. compute in *. elim e.
-Defined.
-
-Lemma ApgMorphismsNotNatural :  exists l,
-   sigma Gx2 (lMap  hx l) <> mapTy (lMap  hx) (sigma Gx1 l). 
-Proof.
- intros. exists tt. intros pf.
- simpl in *. unfold mapTy in pf. simpl in pf. discriminate.
-Qed.
 
 (* Free BCCC ***************************************************)
 
@@ -1053,7 +366,7 @@ refine (@newCategory (Ty L) (@termQ L lam)
 Defined.
 
 (*************************************************************)
-(* For migration, we specialize again *)
+(* Schemas and APGs *)
 
 Record schema := newschema {
  L0 : Type;
@@ -1132,6 +445,8 @@ Proof.
 intros; apply termToFnProper; auto.
 Qed.
 
+(* Theorem 1: Every APG induces a functor *)
+
 Definition apgToFunctor {S} (G: apg S) : Functor (freeBCC (SIGMA S)) SET.
 refine (newFunctor (freeBCC (SIGMA S)) SET 
  (fun a => tyToSet G a) (fun a b f => termToFn G (termRepr f)) _ _).
@@ -1184,6 +499,8 @@ destruct x. left. apply IHt1. auto. right. apply IHt2. auto.
 exact (IHt1 (fst x), IHt2 (snd x)). apply (LMAP h x).
 Defined.
 
+(* Theorem 1: S-APG morphisms induce natural transformations. *)
+
 Definition apgMorphismToNt {S} (G1 G2: apg S) (h: apgMorphism G1 G2)
   : Transform (apgToFunctor G1) (apgToFunctor G2).
 refine (newTransform  (apgToFunctor G1) (apgToFunctor G2)
@@ -1214,6 +531,8 @@ rewrite <- (PFNAT1 l (LMAP0 l e)). rewrite <- (PFNAT0 l e).
 simpl. clear PFNAT0 PFNAT1.
 induction (PHI0 l e); simpl in *; auto; try discriminate; try congruence.
 Defined.
+
+(* Theorem 1: APGs on a schema form a category. *)
 
 Definition apgInst (S: schema) : Category.
 refine (
@@ -1370,6 +689,8 @@ Proof.
  apply (@pfResp2 _ _ _ (@axiomQ _ _ termEquiv ) ). auto.
 Defined.
 
+(* Lemma 2: Each schema mapping induces a functor. *)
+
 Definition apgMtoF {S T} (F: apgMapping S T)
  : Functor (@freeBCC (L0 S) (SIGMA S)) (@freeBCC (L0 T) (SIGMA T)).
 simple refine (newFunctor (@freeBCC (L0 S) (SIGMA S)) (@freeBCC (L0 T) (SIGMA T)) 
@@ -1422,7 +743,7 @@ simple refine (newFunctor (@freeBCC (L0 S) (SIGMA S)) (@freeBCC (L0 T) (SIGMA T)
  unfold termRepr in *. simpl in *.
  rewrite <- e. rewrite pfSurj. rewrite pfSurj.
  f_equal.
-Qed.
+Defined.
 
 Record IsBC {S} (G : Functor (freeBCC (SIGMA S)) SET) := newIsBC {
  IsBCZero :  ApplyO G (Zero _) = Empty_set;
@@ -1448,6 +769,8 @@ refine (@newapg S (fun l => applyO G (Label l))
  rewrite IsBCBaseApplyO0 in a. constructor. auto.
  constructor. auto.
 Defined.
+
+(* Theorem 1: The functor induced by an APG is bi-cartesian. *)
 
 Lemma apgIsBc {S} (g: apg S) : IsBC (apgToFunctor g).
 Proof. 
@@ -1479,6 +802,13 @@ pose (applyF G (termEqc (ELEM l))) as a.
  rewrite IsBCBaseApplyO2. constructor; auto. auto.
  constructor; auto.
 Defined.
+
+(* Lemma 2: The functor induced by a schema mapping is bi-cartesian. *)
+
+Lemma apgMappingIsBc {S T} (F: apgMapping S T) : IsBC2 (apgMtoF F).
+Proof. 
+ apply newIsBC2; simpl; auto.
+Qed.
 
 End APG. 
 
